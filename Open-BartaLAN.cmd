@@ -1,2 +1,2 @@
 @echo off
-start "" "http://localhost:8065"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Open.ps1"

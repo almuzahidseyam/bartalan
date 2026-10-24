@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const base = (process.env.BARTALAN_TEST_URL || 'http://localhost:8065').replace(/\/$/, '');
+const localConfig = await readFile(resolve(root, '.env'), 'utf8');
+const appPort = localConfig.match(/^APP_PORT=(\d+)\s*$/m)?.[1] || '18065';
+const base = (process.env.BARTALAN_TEST_URL || `http://127.0.0.1:${appPort}`).replace(/\/$/, '');
 const credentials = JSON.parse(await readFile(resolve(root, '.secrets/admin.json'), 'utf8'));
 const results = [];
 const users = [];

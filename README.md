@@ -21,7 +21,7 @@
 flowchart LR
     A[Phone: Mattermost Android] --> R[Local router / LAN]
     B[PC: Desktop app or browser] --> R
-    R --> W[Windows host: LAN port 8065]
+    R --> W[Windows host: LAN port 18065]
     W --> G[Local NGINX gateway]
     G --> M[Mattermost in dedicated WSL runtime]
     M --> D[(Local PostgreSQL)]
@@ -34,6 +34,8 @@ Requirements: working WSL 2, an x86-64 PC, spare memory for the server, disk spa
 
 Open PowerShell in this repository:
 
+The default host port is **18065**. To use another free port, pass `-AppPort` to `Initialize.ps1`; any explicit `-SiteUrl` must use that same port. Windows initialization rejects ports reserved by Windows/Hyper-V.
+
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Windows.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Initialize.ps1
@@ -41,7 +43,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start.ps1 -Downloa
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Bootstrap.ps1
 ```
 
-First installation can take several minutes. After bootstrap, sign in at `http://localhost:8065` with the credentials in **`.secrets/admin.json`**. Change the administrator password after sign-in, and update that private file if you want to rerun the integration test. Local placeholder addresses ending in `@bartalan.invalid` do not receive email. The server has email delivery disabled.
+First installation can take several minutes. After bootstrap, sign in at `http://localhost:18065` with the credentials in **`.secrets/admin.json`**. Change the administrator password after sign-in, and update that private file if you want to rerun the integration test. Local placeholder addresses ending in `@bartalan.invalid` do not receive email. The server has email delivery disabled.
 
 If Docker is installed but WSL cannot download images while Windows can, run `scripts/Fetch-Images.ps1` from Windows instead of `Start.ps1 -DownloadImages`, then run `Start.ps1`. It uses the pinned official images through a checksum-verified Windows download tool and checks the imported filesystem and execution settings against the verified archive. Immutable local image IDs are recorded in `.env` because Docker may convert legacy archive manifests during import. The source image digests remain in `.env.example` and the private `.runtime/image-lock.json`.
 
@@ -52,7 +54,7 @@ The Windows start script keeps one hidden WSL helper running while serving chat,
 ### Connect phones and other computers
 
 1. Reserve the server PC's LAN address in your router's DHCP settings.
-2. Set `.env` to use that address, for example `SITE_URL=http://192.168.1.20:8065` and `BIND_ADDRESS=0.0.0.0`. This example address is not discovered automatically.
+2. Set `.env` to use that address, for example `SITE_URL=http://192.168.1.20:18065` and `BIND_ADDRESS=0.0.0.0`. This example address is not discovered automatically.
 3. Run `scripts/Start.ps1` again to apply changes.
 4. Open **PowerShell as Administrator**, then run the following with your actual address and subnet:
 
@@ -62,7 +64,7 @@ The Windows start script keeps one hidden WSL helper running while serving chat,
 
 The script forwards this LAN address and the host's loopback address, and adds one firewall rule limited to that subnet, including when Windows labels the connection Public. The explicit loopback entry also supports hosts where WSL's automatic localhost forwarding is unavailable. It does not open your router, disable the firewall, or expose the database. Rerun it after a WSL address change. See [network troubleshooting](docs/network.md).
 
-On another device on the same LAN, first open `http://192.168.1.20:8065` in a browser. In Mattermost Desktop/Android, add that complete URL as the server address. Install the clients while internet access is available. **Native Android/Desktop behavior still requires testing on the actual client versions and devices.** HTTP is a trusted-LAN pilot configuration; see the TLS notes below.
+On another device on the same LAN, first open `http://192.168.1.20:18065` in a browser. In Mattermost Desktop/Android, add that complete URL as the server address. Install the clients while internet access is available. **Native Android/Desktop behavior still requires testing on the actual client versions and devices.** HTTP is a trusted-LAN pilot configuration; see the TLS notes below.
 
 Create additional accounts locally:
 

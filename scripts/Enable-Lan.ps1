@@ -30,6 +30,13 @@ $linuxAddress = (& wsl.exe -d $script:Distro -u root --exec hostname -I | Out-St
 $parsedLinuxAddress = $null
 if (![Net.IPAddress]::TryParse($linuxAddress, [ref]$parsedLinuxAddress)) { throw 'Could not determine the WSL address.' }
 $port = [int]$values.APP_PORT
+if ($port -lt 1024 -or $port -gt 65535) { throw 'APP_PORT must be between 1024 and 65535.' }
+foreach ($rangeLine in (& netsh.exe interface ipv4 show excludedportrange protocol=tcp)) {
+    if ($rangeLine -match '^\s*(\d+)\s+(\d+)\s*\*?\s*$' -and $port -ge [int]$matches[1] -and $port -le [int]$matches[2]) {
+        throw "Windows has reserved TCP port $port. Choose a free APP_PORT, update SITE_URL, and restart before enabling LAN access."
+    }
+}
+Start-Service -Name iphlpsvc -ErrorAction Stop
 & netsh.exe interface portproxy add v4tov4 "listenaddress=$LanAddress" "listenport=$port" "connectaddress=$linuxAddress" "connectport=$port"
 if ($LASTEXITCODE -ne 0) { throw 'Could not add port forwarding.' }
 & netsh.exe interface portproxy add v4tov4 'listenaddress=127.0.0.1' "listenport=$port" "connectaddress=$linuxAddress" "connectport=$port"
@@ -37,6 +44,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not add host-local port forwarding.' }
 $rule = 'BartaLAN-Local-Chat'
 Get-NetFirewallRule -Name $rule -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -Name $rule -DisplayName 'BartaLAN - local chat only' -Direction Inbound -Action Allow -Protocol TCP -LocalAddress $LanAddress -LocalPort $port -RemoteAddress $Subnet -Profile Any | Out-Null
+$reachable = $false
+for ($attempt = 0; $attempt -lt 10; $attempt++) {
+    try {
+        $reply = Invoke-RestMethod -Uri "http://${LanAddress}:$port/api/v4/system/ping" -TimeoutSec 2
+        if ($reply.status -eq 'OK') { $reachable = $true; break }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+}
+if (!$reachable) { throw 'Rules were saved, but the LAN health endpoint is unreachable. Check Windows IP Helper, reserved ports, and forwarding before using this address.' }
 $privateDir = Join-Path $script:ProjectRoot '.secrets'
 New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
 @{lan_address=$LanAddress; subnet=$Subnet; wsl_address=$linuxAddress; port=$port; updated_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $privateDir 'lan-access.json') -Encoding UTF8

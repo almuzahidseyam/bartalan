@@ -10,6 +10,8 @@ import urllib.request
 import urllib.error
 
 ROOT = Path(__file__).resolve().parents[1]
+values = dict(line.split('=', 1) for line in (ROOT / '.env').read_text().splitlines() if line and not line.startswith('#'))
+api_base = 'http://127.0.0.1:' + values['APP_PORT'] + '/api/v4'
 credential_path = ROOT / '.secrets' / 'admin.json'
 
 def local(*args):
@@ -23,7 +25,7 @@ def local(*args):
 
 for attempt in range(120):
     try:
-        with urllib.request.urlopen('http://127.0.0.1:8065/api/v4/system/ping', timeout=3) as response:
+        with urllib.request.urlopen(api_base + '/system/ping', timeout=3) as response:
             if json.load(response).get('status') == 'OK':
                 break
     except Exception:
@@ -66,7 +68,7 @@ def api(path, body=None, token=None):
     headers = {'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f'Bearer {token}'
-    request = urllib.request.Request('http://127.0.0.1:8065/api/v4' + path,
+    request = urllib.request.Request(api_base + path,
         data=json.dumps(body).encode() if body is not None else None, headers=headers)
     with urllib.request.urlopen(request, timeout=20) as response:
         return json.load(response), response.headers.get('Token')

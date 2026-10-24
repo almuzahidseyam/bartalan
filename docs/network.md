@@ -12,11 +12,13 @@ BDIX or other peering is not a guarantee that a particular subscriber can reach 
 
 ## Windows 11 / WSL 2 NAT path
 
-The supplied Windows scripts use a dedicated WSL 2 distribution named `BartaLAN` in the default NAT networking mode. Docker publishes the NGINX gateway at TCP 8065 inside WSL. Windows localhost forwarding provides access from the host PC. LAN access uses a Windows portproxy from the PC's selected LAN IPv4 address to WSL's current IPv4 address, with a firewall rule restricted to the chosen subnet. Mattermost and PostgreSQL are not directly published.
+The supplied Windows scripts use a dedicated WSL 2 distribution named `BartaLAN` in the default NAT networking mode. Docker publishes the NGINX gateway at TCP 18065 inside WSL. Windows localhost forwarding provides access from the host PC. LAN access uses a Windows portproxy from the PC's selected LAN IPv4 address to WSL's current IPv4 address, with a firewall rule restricted to the chosen subnet. Mattermost and PostgreSQL are not directly published.
 
 The internal Docker network blocks normal off-network traffic from Mattermost and PostgreSQL. NGINX also joins an ordinary ingress bridge so Docker versions that omit published ports on internal-only networks can accept clients. Its configuration forwards only to Mattermost. This is application isolation, not a firewall for NGINX, the user's PC, or browser. Initial package/image downloads take place outside the application network. The pilot does not alter system-wide sleep settings, router DHCP, NAT settings, Wi-Fi isolation, or other WSL distributions.
 
 ## Diagnostics in order
+
+Windows/Hyper-V can reserve TCP port ranges even when no process appears to be listening. A reserved port cannot be used by Windows forwarding. The pilot uses host port 18065; both initialization and LAN setup check Windows's exclusion list and reject a reserved port. If necessary, select a free port, update both `APP_PORT` and `SITE_URL`, restart the stack, and recreate the forwarding entries. Do not delete Windows's reserved ranges to make the application fit.
 
 1. `scripts/Status.ps1`: confirm the services run and localhost health is OK.
 2. From the Windows host, open the configured LAN address. If localhost works but LAN does not, check WSL's current IP and the portproxy (`netsh interface portproxy show v4tov4`).
