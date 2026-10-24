@@ -18,9 +18,10 @@ Verified on Windows 11 using a dedicated WSL 2 runtime and the images pinned in 
 - Backup creation with the application quiesced, followed by restart.
 - PowerShell, Python, shell, Compose, and integration-test syntax/configuration checks.
 - Windows forwarding on the LAN and loopback addresses, with a successful HTTP health response. The original host port 8065 was inside a Windows-reserved range; the pilot now uses 18065, rejects reserved ports during setup, and verifies the forwarded endpoint before reporting LAN setup success.
+- The operator confirmed that the Mattermost login page opens in a phone browser on the same Wi-Fi after the forwarding fix.
 
 Local machine addresses, account passwords, chat data, and backup files are excluded from version control. The GitHub workflow independently starts a disposable stack and exercises messaging, attachments, isolation, persistence, and backup creation on future pushes.
 
 ## Still requires a real-device drill
 
-The automated tests use HTTP/WebSocket clients. A physical Android/Desktop app, a second device over Wi-Fi, an actual router-WAN disconnection, ISP routing across homes, and a complete backup restoration are separate acceptance checks. They are not established by the server-side test results above. Windows forwarding was checked from the host; the second-device check remains necessary to confirm the router and Wi-Fi path.
+The automated tests use HTTP/WebSocket clients. Native Android/Desktop app behavior, a complete chat/file exchange on physical devices, an actual router-WAN disconnection, ISP routing across homes, and a complete backup restoration are separate acceptance checks. The phone-browser login page check confirms the Wi-Fi route to the server; it does not establish these remaining behaviors.
