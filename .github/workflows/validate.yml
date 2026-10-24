@@ -1,0 +1,47 @@
+name: Validate deployment
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Generate disposable CI configuration
+        shell: pwsh
+        run: ./scripts/Initialize.ps1
+      - name: Validate Compose without printing secrets
+        run: docker compose config --quiet
+      - name: Check shell syntax
+        run: bash -n scripts/install-engine.sh
+      - name: Check Python syntax
+        run: python3 -m py_compile scripts/bootstrap.py scripts/backup.py tests/isolation.py
+      - name: Check integration test syntax
+        run: node --check tests/smoke.mjs
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts/*.ps1 | ForEach-Object {
+            $parseErrors = $null
+            $tokens = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors) { throw ($parseErrors | Out-String) }
+          }
+      - name: Download the pinned service images
+        run: docker compose pull --policy always
+      - name: Start isolated services
+        run: docker compose up -d --pull never --wait --wait-timeout 180
+      - name: Create disposable local administrator
+        run: python3 scripts/bootstrap.py
+      - name: Verify actual application network isolation
+        run: python3 tests/isolation.py
+      - name: Exercise messaging, attachments, access control, and persistence
+        run: node tests/smoke.mjs --restart
+      - name: Exercise consistent backup creation
+        run: python3 scripts/backup.py
+      - name: Stop disposable services
+        if: always()
+        run: docker compose down --volumes

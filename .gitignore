@@ -1,0 +1,9 @@
+.env
+.secrets/
+backups/
+offline-bundle/
+reports/local-*.json
+__pycache__/
+*.pyc
+*.log
+.runtime/
