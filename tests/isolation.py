@@ -30,6 +30,7 @@ for service in ['mattermost','postgres']:
 
 gateway=output([*compose,'ps','-q','gateway'])
 inspection=json.loads(output(['docker','inspect',gateway]))[0]
-assert set(inspection['HostConfig']['PortBindings'])=={'8080/tcp'}, 'Only the HTTP gateway should publish a port'
+assert set(inspection['HostConfig']['PortBindings'])=={'8443/tcp'}, 'Only the HTTPS gateway should publish a port'
+assert all(not mount['Source'].endswith('/tls') for mount in inspection['Mounts']), 'Never mount the CA signing key in the gateway'
 assert len(inspection['NetworkSettings']['Networks'])==2, 'Gateway must connect ingress to the application network'
-print('PASS gateway: a single published HTTP port; application/database remain isolated')
+print('PASS gateway: a single published HTTPS port; application/database and CA signing key remain isolated')

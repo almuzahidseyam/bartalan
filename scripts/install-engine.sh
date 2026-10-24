@@ -6,7 +6,7 @@ if command -v docker >/dev/null && docker compose version >/dev/null 2>&1; then
     exit 0
 fi
 apt-get update -qq -o APT::Update::Error-Mode=any -o Acquire::Retries=1 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20
-apt-get install -y -qq ca-certificates curl systemd systemd-sysv dbus procps iproute2 python3
+apt-get install -y -qq ca-certificates curl systemd systemd-sysv dbus procps iproute2 python3 openssl
 install -m 0755 -d /etc/apt/keyrings
 curl --fail --silent --show-error --location https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc

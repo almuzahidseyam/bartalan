@@ -14,11 +14,14 @@ jobs:
         shell: pwsh
         run: ./scripts/Initialize.ps1
       - name: Validate Compose without printing secrets
-        run: docker compose config --quiet
+        run: |
+          python3 tests/certificates.py
+          python3 scripts/certificates.py
+          docker compose config --quiet
       - name: Check shell syntax
         run: bash -n scripts/install-engine.sh
       - name: Check Python syntax
-        run: python3 -m py_compile scripts/bootstrap.py scripts/backup.py tests/isolation.py
+        run: python3 -m py_compile scripts/bootstrap.py scripts/backup.py scripts/certificates.py tests/isolation.py tests/security.py
       - name: Check integration test syntax
         run: node --check tests/smoke.mjs
       - name: Check PowerShell syntax
@@ -42,6 +45,10 @@ jobs:
         run: node tests/smoke.mjs --restart
       - name: Exercise consistent backup creation
         run: python3 scripts/backup.py
+      - name: Verify certificate boundaries and account throttling
+        run: |
+          docker compose up -d --pull never --wait --wait-timeout 180
+          python3 tests/security.py --rate-limit
       - name: Stop disposable services
         if: always()
         run: docker compose down --volumes

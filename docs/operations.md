@@ -20,7 +20,7 @@ Adjust the repository path if installed elsewhere. Do not run `docker compose do
 
 The first administrator is created by `scripts/Bootstrap.ps1`; initial credentials are stored in `.secrets/admin.json`. That file is ignored by Git. Protect it with the Windows account's permissions and disk encryption. The `.env` database password is also private. Do not paste `docker compose config` or full environment output into public issues: rendered settings can contain passwords.
 
-Create users with `scripts/Add-User.ps1`. The administrator can reset a local user's password through the local management CLI; from an interactive WSL terminal:
+Self-registration is open to reachable clients. New users create an account and join the public BartaLAN team; shared public channels are visible to its members. Review accounts and deactivate abusive ones in System Console, moderate public channels, and use private channels for restricted conversations. Emails are unverified and must not be treated as proof of identity. Alternatively create users with `scripts/Add-User.ps1`. The administrator can reset a local user's password through the local management CLI; from an interactive WSL terminal:
 
 ```sh
 docker compose exec mattermost /mattermost/bin/mmctl --local user change-password USERNAME
@@ -40,6 +40,7 @@ The backup script stops Mattermost briefly so files and the database are consist
 - `files.tar.gz`: attachments and local media.
 - `config.tar.gz`: server configuration.
 - `server.env`, optional `admin.json`: secrets and recovery settings.
+- `tls/`: the local CA, its private signing key, and server certificate/key. Preserve these to keep existing client trust.
 - `manifest.json`: selected images, file hashes, creation time.
 
 Treat a backup as private chat data. Copy it to a separate protected disk and test recovery before relying on the service. A failed backup directory may be incomplete and must not be used. Hashes detect accidental corruption; they do not encrypt a backup or authenticate who created it. Old backups are not automatically pruned.
@@ -49,7 +50,7 @@ Treat a backup as private chat data. Copy it to a separate protected disk and te
 Recover to an empty installation using the same pinned images first. Preserve the original runtime and backups. Do not restore over active data.
 
 1. Verify every file against `manifest.json` before importing anything.
-2. Prepare a fresh runtime/Compose project and load the required cached images. Copy `server.env` to its private `.env`; update the Compose project name and pilot address if needed so it cannot overlap the original server.
+2. Prepare a fresh runtime/Compose project and load the required cached images. Copy `server.env` to its private `.env` and the complete backed-up `tls/` to `.secrets/tls/`, protecting private keys with the same permissions as credentials. Update the Compose project name and pilot address if needed so it cannot overlap the original server. Run `scripts/certificates.py` to validate/reissue the leaf for any changed address and recreate the public CA exports. Do not generate a different CA over an existing installation.
 3. Start PostgreSQL alone: `docker compose up -d postgres`. Wait for it to become healthy.
 4. Import `database.dump` with PostgreSQL's matching `pg_restore`, using the user/database from the restored `.env`. For example, in a Linux shell, use `docker compose exec -T postgres pg_restore -U <user> -d <database> --no-owner < /path/to/database.dump`. Do not include literal angle-bracket placeholders.
 5. Create Mattermost's fresh volumes with `docker compose create mattermost`. Determine the actual volume names from `docker inspect` or `docker volume ls`; do not guess if multiple projects exist.
@@ -69,3 +70,5 @@ This writes `offline-bundle/images.tar` and its SHA-256 checksum. On a prepared 
 ## Updates
 
 The images are pinned by version and digest. Review upstream security releases while online. Back up, deliberately select and record new image digests, download them, test an upgrade on a copy, then apply to the active installation. The local server has no internet security-update checks; keeping the packages and images maintained is the operator's responsibility. Do not roll a database volume back to an older major PostgreSQL image.
+
+Run `Start.ps1` periodically to check/renew the local one-year HTTPS certificate; this is not an unattended renewal service. Keep the server clock correct. The root CA is valid for ten years and needs a planned client trust update before replacement. See [HTTPS and security limits](https.md) for client trust, account throttling, storage monitoring and retiring a CA.

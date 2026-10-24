@@ -42,7 +42,13 @@ services:
       MM_SERVICESETTINGS_ENABLESECURITYFIXALERT: 'false'
       MM_SERVICESETTINGS_ENABLEINSECUREOUTGOINGCONNECTIONS: 'false'
       MM_TEAMSETTINGS_SITENAME: BartaLAN
-      MM_TEAMSETTINGS_ENABLEOPENSERVER: 'false'
+      MM_TEAMSETTINGS_ENABLEOPENSERVER: 'true'
+      MM_TEAMSETTINGS_ENABLEUSERCREATION: 'true'
+      MM_PASSWORDSETTINGS_MINIMUMLENGTH: '12'
+      MM_PASSWORDSETTINGS_LOWERCASE: 'true'
+      MM_PASSWORDSETTINGS_UPPERCASE: 'true'
+      MM_PASSWORDSETTINGS_NUMBER: 'true'
+      MM_PASSWORDSETTINGS_SYMBOL: 'true'
       MM_EMAILSETTINGS_ENABLESIGNUPWITHEMAIL: 'true'
       MM_EMAILSETTINGS_ENABLESIGNINWITHEMAIL: 'true'
       MM_EMAILSETTINGS_ENABLESIGNINWITHUSERNAME: 'true'
@@ -86,9 +92,15 @@ services:
     depends_on:
       mattermost: {condition: service_healthy}
     ports:
-      - '${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-18065}:8080'
+      - '${BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-18065}:8443'
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/proxy.conf:/etc/nginx/bartalan-proxy.conf:ro
+      - type: bind
+        source: ./.secrets/tls/server
+        target: /etc/nginx/tls
+        read_only: true
+        bind: {create_host_path: false}
     entrypoint: [nginx, '-g', 'daemon off;']
     networks: [local, ingress]
     read_only: true

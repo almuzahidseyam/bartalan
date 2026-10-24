@@ -40,10 +40,11 @@ The default host port is **18065**. To use another free port, pass `-AppPort` to
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-Windows.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Initialize.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Start.ps1 -DownloadImages
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Trust-LocalCertificate.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Bootstrap.ps1
 ```
 
-First installation can take several minutes. After bootstrap, sign in at `http://localhost:18065` with the credentials in **`.secrets/admin.json`**. Change the administrator password after sign-in, and update that private file if you want to rerun the integration test. Local placeholder addresses ending in `@bartalan.invalid` do not receive email. The server has email delivery disabled.
+First installation can take several minutes. After bootstrap and local CA trust setup, sign in at `https://localhost:18065` with the credentials in **`.secrets/admin.json`**. Change the administrator password after sign-in, and update that private file if you want to rerun the integration test. Local placeholder addresses ending in `@bartalan.invalid` do not receive email. The server has email delivery disabled. See [certificate setup](docs/https.md) for other devices.
 
 If Docker is installed but WSL cannot download images while Windows can, run `scripts/Fetch-Images.ps1` from Windows instead of `Start.ps1 -DownloadImages`, then run `Start.ps1`. It uses the pinned official images through a checksum-verified Windows download tool and checks the imported filesystem and execution settings against the verified archive. Immutable local image IDs are recorded in `.env` because Docker may convert legacy archive manifests during import. The source image digests remain in `.env.example` and the private `.runtime/image-lock.json`.
 
@@ -54,7 +55,7 @@ The Windows start script keeps one hidden WSL helper running while serving chat,
 ### Connect phones and other computers
 
 1. Reserve the server PC's LAN address in your router's DHCP settings.
-2. Set `.env` to use that address, for example `SITE_URL=http://192.168.1.20:18065` and `BIND_ADDRESS=0.0.0.0`. This example address is not discovered automatically.
+2. Set `.env` to use that address, for example `SITE_URL=https://192.168.1.20:18065` and `BIND_ADDRESS=0.0.0.0`. This example address is not discovered automatically.
 3. Run `scripts/Start.ps1` again to apply changes.
 4. Open **PowerShell as Administrator**, then run the following with your actual address and subnet:
 
@@ -64,22 +65,22 @@ The Windows start script keeps one hidden WSL helper running while serving chat,
 
 The script forwards this LAN address and the host's loopback address, and adds one firewall rule limited to that subnet, including when Windows labels the connection Public. The explicit loopback entry also supports hosts where WSL's automatic localhost forwarding is unavailable. It does not open your router, disable the firewall, or expose the database. Rerun it after a WSL address change. See [network troubleshooting](docs/network.md).
 
-On another device on the same LAN, first open `http://192.168.1.20:18065` in a browser. In Mattermost Desktop/Android, add that complete URL as the server address. Install the clients while internet access is available. **Native Android/Desktop behavior still requires testing on the actual client versions and devices.** HTTP is a trusted-LAN pilot configuration; see the TLS notes below.
+Install this server's public CA certificate on each device, then open `https://192.168.1.20:18065` in a browser. In Mattermost Desktop/Android, use that complete URL. Install the clients while internet access is available. **A stock Android app may reject a user-installed CA even when the browser trusts it. Native Android/Desktop compatibility is not yet verified.** Use a trusted browser for the pilot and see [HTTPS setup](docs/https.md). Do not bypass certificate warnings.
 
-Create additional accounts locally:
+Users can choose **Create an account**, enter an email/username and a strong password, then join the public **BartaLAN** team. Passwords require at least 12 characters, including upper/lowercase, a number and a symbol. Email ownership is not verified in this offline setup. Anyone who can reach the service can register; the default Windows firewall still restricts access to the chosen LAN subnet. The administrator can alternatively create an account locally:
 
 ```powershell
 .\scripts\Add-User.ps1 -Username friend
 ```
 
-The script prompts privately for a password and adds the account to the BartaLAN team. Open self-registration is disabled. Existing users can also be managed by the administrator in Mattermost.
+The script prompts privately for a password and adds the account to the BartaLAN team. Existing users can be managed by the administrator in Mattermost. New accounts receive ordinary user privileges.
 
 ## Offline behavior and boundaries
 
 - Mattermost and PostgreSQL share an **internal Docker network** with no external route. A small NGINX gateway connects that network to the published LAN port; only the gateway also joins an ingress network. It proxies to the local chat service and has no internet upstream. External email, mobile push notifications, link previews, diagnostics, notices, GIF search, and plugins are disabled. Updates require deliberate image downloads while internet access is available.
 - Mobile background push depends on Google/Apple infrastructure and is unavailable offline. Keep the app open for live updates; reconnect to fetch messages stored while disconnected.
 - Voice/video, internet relays, public tunnels, and cross-ISP routing are outside this pilot's scope.
-- The initial HTTP setup does not encrypt network traffic. Use it on a trusted test LAN. A shared ISP deployment needs HTTPS with a certificate the clients trust, local DNS that remains reachable, access controls, power backup, and an operator.
+- The gateway uses HTTPS (TLS 1.2/1.3) with a private local CA. Only its HTTPS port is published; old HTTP bookmarks redirect to HTTPS. The CA signing key is never mounted in the gateway. Signup/login attempts are rate limited. Windows portproxy can make multiple users share one apparent source address, so limits may affect several users together. A shared ISP deployment still needs deliberate routing, DNS, access controls, power backup, and an operator.
 - Do not assume self-signed certificates will work in the stock mobile app. Public certificates can be provisioned beforehand with DNS validation, but renewal needs planning; an offline private CA needs client trust/compatibility testing.
 - Mattermost server storage is not end-to-end encrypted: administrators can access stored content. Do not describe this as an anonymous or censorship-proof network.
 - Images and the app must be downloaded before an outage. Retaining power, a router, and a route to the server is essential. Windows/WSL is the pilot host; sustained community operation should use a maintained Linux server.
@@ -94,7 +95,7 @@ node .\tests\smoke.mjs
 node .\tests\smoke.mjs --restart
 ```
 
-This tests two independent accounts, Bengali live messaging over WebSockets, direct messages, authenticated photo/file upload and download, content hashes, and offline configuration. It creates temporary accounts and a test team, deactivates/archives them afterwards, and removes its posts. Test audit records and uploaded file blobs can remain; use a test server for repeated runs. Local results are ignored by Git.
+This tests HTTPS with certificate validation, open signup and lobby membership, password rules, two independent accounts, Bengali live messaging over secure WebSockets, direct messages, authenticated photo/file upload/download, content hashes, and offline configuration. It creates temporary accounts and a test team, deactivates/archives them afterwards, and removes its posts. Test audit records and uploaded file blobs can remain; use a test server for repeated runs. Local results are ignored by Git. `python3 tests/security.py --rate-limit` separately checks trust/hostname rejection and real signup throttling on a disposable test instance.
 
 From a Linux/Docker terminal, run `python3 tests/isolation.py` to verify that Mattermost and PostgreSQL have only an internal network, no external default route, and no directly published ports. The gateway is the only ingress point.
 
@@ -109,7 +110,7 @@ For the actual outage drill, disconnect only the router's WAN/uplink while keepi
 | `tests/smoke.mjs` | Real-server integration test |
 | `docs/` | Bengali instructions, topology, backup and recovery |
 
-`.env`, credentials, runtime downloads, messages, and backups are excluded from Git. Backups contain private chat data and secrets; keep them private.
+`.env`, credentials, generated certificates/keys, runtime downloads, messages, and backups are excluded from Git. Backups contain private chat data and secrets, including the local CA key; keep them private.
 
 ## Sources and license
 

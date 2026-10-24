@@ -7,12 +7,22 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+// Node reads additional CA roots at startup. Re-execute with our exact local CA;
+// certificate and hostname validation remain enabled for fetch and WebSocket.
+if (!process.env.BARTALAN_TEST_CA_LOADED) {
+  const child = spawnSync(process.execPath, process.argv.slice(1), {
+    stdio: 'inherit', env: {...process.env,
+      NODE_EXTRA_CA_CERTS: resolve(root, '.secrets/tls/ca.crt'), BARTALAN_TEST_CA_LOADED: '1'},
+  });
+  process.exit(child.status ?? 1);
+}
 const localConfig = await readFile(resolve(root, '.env'), 'utf8');
 const appPort = localConfig.match(/^APP_PORT=(\d+)\s*$/m)?.[1] || '18065';
-const base = (process.env.BARTALAN_TEST_URL || `http://127.0.0.1:${appPort}`).replace(/\/$/, '');
+const base = (process.env.BARTALAN_TEST_URL || `https://127.0.0.1:${appPort}`).replace(/\/$/, '');
 const credentials = JSON.parse(await readFile(resolve(root, '.secrets/admin.json'), 'utf8'));
 const results = [];
 const users = [];
+const registeredUsers = [];
 const tokens = [];
 const posts = [];
 const attachments = [];
@@ -43,6 +53,10 @@ async function login(username, password) {
 try {
   assert.equal((await api('/system/ping')).status, 'OK');
   report('server health');
+  const redirect = await fetch(base.replace(/^https:/, 'http:'), {redirect:'manual'});
+  assert.equal(redirect.status, 308);
+  assert.equal(redirect.headers.get('location'), `${base}/`);
+  report('old HTTP bookmark redirects to HTTPS');
   const html = await fetch(base).then(r => r.text());
   assert.match(html, /<html/i);
   report('web client served locally');
@@ -53,21 +67,37 @@ try {
   assert.equal(config.EmailSettings.SendEmailNotifications, false);
   assert.equal(config.ServiceSettings.EnableLinkPreviews, false);
   assert.equal(config.PluginSettings.Enable, false);
-  assert.equal(config.TeamSettings.EnableOpenServer, false);
-  report('offline settings and closed public registration');
+  assert.equal(config.TeamSettings.EnableOpenServer, true);
+  assert.equal(config.PasswordSettings.MinimumLength, 12);
+  for (const setting of ['Lowercase','Uppercase','Number','Symbol']) assert.equal(config.PasswordSettings[setting], true);
+  report('offline settings, open signup, and strong password policy');
 
   const suffix = randomBytes(5).toString('hex');
-  const registration = await fetch(`${base}/api/v4/users`, {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username:`outsider-${suffix}`,email:`outsider-${suffix}@bartalan.invalid`,password:randomBytes(24).toString('hex')})});
-  if(registration.ok) {users.push(await registration.json());throw new Error('Uninvited registration unexpectedly allowed');}
-  assert.ok([400,401,403].includes(registration.status));
-  report('uninvited account registration rejected');
+  await api('/users', {method:'POST', expected:400, body:{username:`weak-${suffix}`,
+    email:`weak-${suffix}@bartalan.invalid`,password:'short'}});
+  report('weak signup password rejected');
+  const signupPassword = randomBytes(24).toString('hex') + 'aA1!';
+  const newcomer = await api('/users', {method:'POST', body:{username:`new-${suffix}`,
+    email:`new-${suffix}@bartalan.invalid`,password:signupPassword}});
+  registeredUsers.push(newcomer);
+  assert.ok(!newcomer.roles.split(' ').includes('system_admin'));
+  const newcomerSession = await login(newcomer.username, signupPassword);
+  const lobby = await api('/teams/name/bartalan', {token:newcomerSession.token});
+  assert.equal(lobby.type, 'O');
+  await api(`/teams/${lobby.id}/members`, {method:'POST',token:newcomerSession.token,
+    body:{team_id:lobby.id,user_id:newcomer.id}});
+  const lobbyChannels = await api(`/users/me/teams/${lobby.id}/channels`, {token:newcomerSession.token});
+  const townSquare = lobbyChannels.find(channel=>channel.name==='town-square');
+  assert.ok(townSquare, 'New signup must be able to join the shared lobby');
+  const welcome = await api('/posts', {method:'POST',token:newcomerSession.token,
+    body:{channel_id:townSquare.id,message:`Signup verification ${suffix}`}});
+  posts.push(welcome.id);
+  report('anonymous signup, normal user login, BartaLAN team join, and lobby message');
   team = await api('/teams', {method: 'POST', token: adminToken,
     body: {name: `verify-${suffix}`, display_name: 'BartaLAN verification', type: 'I'}});
   for (const role of ['sender', 'receiver']) {
     const username = `${role}-${suffix}`;
-    const password = randomBytes(24).toString('hex');
+    const password = randomBytes(24).toString('hex') + 'aA1!';
     const user = await api('/users', {method:'POST', token:adminToken,
       body:{username, email:`${username}@bartalan.invalid`, password}});
     users.push(user);
@@ -151,7 +181,7 @@ try {
 } finally {
   socket?.close();
   for(const id of posts) await api(`/posts/${id}`,{method:'DELETE',token:adminToken}).catch(()=>{});
-  for(const user of users) await api(`/users/${user.id}/active`,{method:'PUT',token:adminToken,body:{active:false}}).catch(()=>{});
+  for(const user of [...users,...registeredUsers]) await api(`/users/${user.id}/active`,{method:'PUT',token:adminToken,body:{active:false}}).catch(()=>{});
   if(team) await api(`/teams/${team.id}`,{method:'DELETE',token:adminToken}).catch(()=>{});
   for(const token of tokens) await api('/users/logout',{method:'POST',token}).catch(()=>{});
   await mkdir(resolve(root,'reports'),{recursive:true});

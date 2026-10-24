@@ -32,12 +32,13 @@ try:
             '--entrypoint','tar',values['POSTGRES_IMAGE'],'-czf',f'/backup/{name}.tar.gz','-C','/source','.'],check=True)
     shutil.copy2(root/'.env',destination/'server.env')
     if (root/'.secrets/admin.json').exists(): shutil.copy2(root/'.secrets/admin.json',destination/'admin.json')
+    if (root/'.secrets/tls').exists(): shutil.copytree(root/'.secrets/tls',destination/'tls')
     def checksum(path):
         with path.open('rb') as source:
             return hashlib.file_digest(source,'sha256').hexdigest()
-    manifest={'format':1,'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    manifest={'format':2,'created_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
               'images':{key:values[key] for key in ['MATTERMOST_IMAGE','POSTGRES_IMAGE','GATEWAY_IMAGE']},
-              'sha256':{p.name:checksum(p) for p in destination.iterdir() if p.is_file()}}
+              'sha256':{p.relative_to(destination).as_posix():checksum(p) for p in destination.rglob('*') if p.is_file()}}
     (destination/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     print(f'Backup complete: {destination.name}. Contains private data and secrets.')
 finally:

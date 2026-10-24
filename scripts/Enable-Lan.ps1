@@ -47,7 +47,7 @@ New-NetFirewallRule -Name $rule -DisplayName 'BartaLAN - local chat only' -Direc
 $reachable = $false
 for ($attempt = 0; $attempt -lt 10; $attempt++) {
     try {
-        $reply = Invoke-RestMethod -Uri "http://${LanAddress}:$port/api/v4/system/ping" -TimeoutSec 2
+        $reply = Invoke-RestMethod -Uri "https://${LanAddress}:$port/api/v4/system/ping" -TimeoutSec 2
         if ($reply.status -eq 'OK') { $reachable = $true; break }
     } catch {}
     Start-Sleep -Milliseconds 500
@@ -56,5 +56,5 @@ if (!$reachable) { throw 'Rules were saved, but the LAN health endpoint is unrea
 $privateDir = Join-Path $script:ProjectRoot '.secrets'
 New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
 @{lan_address=$LanAddress; subnet=$Subnet; wsl_address=$linuxAddress; port=$port; updated_at=(Get-Date).ToUniversalTime().ToString('o')} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $privateDir 'lan-access.json') -Encoding UTF8
-Write-Host "LAN access enabled: http://${LanAddress}:$port (allowed clients: $Subnet)."
+Write-Host "LAN access enabled: https://${LanAddress}:$port (allowed clients: $Subnet)."
 Write-Host 'No router port forwarding or internet tunnel was configured.'

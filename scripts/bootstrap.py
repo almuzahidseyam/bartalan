@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import ssl
 import subprocess
 import sys
 import time
@@ -11,7 +12,8 @@ import urllib.error
 
 ROOT = Path(__file__).resolve().parents[1]
 values = dict(line.split('=', 1) for line in (ROOT / '.env').read_text().splitlines() if line and not line.startswith('#'))
-api_base = 'http://127.0.0.1:' + values['APP_PORT'] + '/api/v4'
+api_base = 'https://127.0.0.1:' + values['APP_PORT'] + '/api/v4'
+tls_context = ssl.create_default_context(cafile=str(ROOT / '.secrets/tls/ca.crt'))
 credential_path = ROOT / '.secrets' / 'admin.json'
 
 def local(*args):
@@ -25,7 +27,7 @@ def local(*args):
 
 for attempt in range(120):
     try:
-        with urllib.request.urlopen(api_base + '/system/ping', timeout=3) as response:
+        with urllib.request.urlopen(api_base + '/system/ping', timeout=3, context=tls_context) as response:
             if json.load(response).get('status') == 'OK':
                 break
     except Exception:
@@ -38,7 +40,7 @@ if credential_path.exists():
     credentials = json.loads(credential_path.read_text(encoding='utf-8'))
 else:
     credentials = {'username': 'bartalan-admin', 'email': 'admin@bartalan.invalid',
-                   'password': secrets.token_urlsafe(27), 'team': 'bartalan'}
+                   'password': secrets.token_urlsafe(27) + 'aA1!', 'team': 'bartalan'}
     # Persist first, so an interrupted setup cannot lose an existing account's password.
     credential_path.write_text(json.dumps(credentials, indent=2) + '\n', encoding='utf-8')
     os.chmod(credential_path, 0o600)
@@ -64,13 +66,13 @@ except Exception:
     # Leave the saved credentials for recovery instead of generating a new password.
     print('Administrator setup failed; saved credentials preserved for recovery.', file=sys.stderr)
     raise
-def api(path, body=None, token=None):
+def api(path, body=None, token=None, method=None):
     headers = {'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f'Bearer {token}'
     request = urllib.request.Request(api_base + path,
-        data=json.dumps(body).encode() if body is not None else None, headers=headers)
-    with urllib.request.urlopen(request, timeout=20) as response:
+        data=json.dumps(body).encode() if body is not None else None, headers=headers, method=method)
+    with urllib.request.urlopen(request, timeout=20, context=tls_context) as response:
         return json.load(response), response.headers.get('Token')
 
 try:
@@ -83,7 +85,10 @@ try:
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
-        team, _ = api('/teams', {'name': credentials['team'], 'display_name': 'BartaLAN', 'type': 'I'}, token)
+        team, _ = api('/teams', {'name': credentials['team'], 'display_name': 'BartaLAN', 'type': 'O'}, token)
+    # Existing installations had a private team. Make the shared lobby joinable.
+    local('team', 'modify', credentials['team'], '--public')
+    api(f"/teams/{team['id']}/patch", {'allow_open_invite': True}, token, method='PUT')
     try:
         api(f"/teams/{team['id']}/members/{user['id']}", token=token)
     except urllib.error.HTTPError as error:
